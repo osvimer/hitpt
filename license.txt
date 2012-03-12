@@ -17,5 +17,3 @@ If you choose to link to use, you can use any link text you desire, but to make 
 <a href="http://freehtml5templates.com">Free HTML5 Templates</a>
 
 Enjoy!
-
-(Note: This template uses the html5doctor.com Reset Stylesheet which has been placed into the public domain by its creator, Richard Clark.)
