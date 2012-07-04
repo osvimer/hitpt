@@ -1,0 +1,11 @@
+attachments/
+bitbucket/
+config/
+imdb/cache/
+imdb/images/
+shadow/
+torrents/
+memcached/Temp
+subs/
+*.zip
+*.rar
