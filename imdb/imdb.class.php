@@ -248,11 +248,11 @@ $responseBody = $response->getBody();
    $this->page["Directed"] = "";
 
    $this->main_title = "";
-   $this->main_year = "";
+   $this->main_year = -"";
    $this->main_runtime = "";
-   $this->main_rating = "";
+   $this->main_rating = -1;
    $this->main_comment = "";
-   $this->main_votes = "";
+   $this->main_votes = -1;
    $this->main_language = "";
    $this->main_genre = "";
    $this->main_genres = "";
@@ -459,26 +459,43 @@ $responseBody = $response->getBody();
    return $this->main_runtimes;
   }
 
+ /** Setup votes
+   * @method private rate_vote
+   */
+  private function rate_vote() {
+    if ($this->page["Title"] == "") $this->openpage ("Title");
+    if (preg_match('!<span itemprop="ratingValue">(\d{1,2}\.\d)!i',$this->page["Title"],$match)){
+      $this->main_rating = $match[1];
+    } else {
+      $this->main_rating = 0;
+    }
+    if (preg_match('!<span itemprop="ratingCount">([\d\.,]+)</span!i',$this->page["Title"],$match)){
+        $this->main_votes = $match[1];
+    }else{
+        $this->main_votes = 0;
+    }
+  }
+
   /** Get movie rating
    * @method rating
-   * @return string rating
+   * @return string rating current rating as given by IMDB site
+   * @see IMDB page / (TitlePage)
    */
-  function rating () {
-   if ($this->main_rating == "") {
-    if ($this->page["Title"] == "") {
-	$this->openpage ("Title");
-    }
-    $rate_s = strpos ($this->page["Title"], "User Rating:");
-#    $rate_s = strpos ($this->page["Title"], '/ratings">');
-    if ( $rate_s == 0 )	return FALSE;
-    if (strpos ($this->page["Title"], "awaiting 5 votes")) return false;
-    $rate_s = strpos ($this->page["Title"], "<b>", $rate_s);
-    $rate_e = strpos ($this->page["Title"], "/", $rate_s);
-    $this->main_rating = substr ($this->page["Title"], $rate_s + 3, $rate_e - $rate_s - 3);
-    if ($rate_e - $rate_s > 7) $this->main_rating = "";
+  public function rating () {
+    if ($this->main_rating == -1) $this->rate_vote();
     return $this->main_rating;
-   }
   }
+
+  /** Return votes for this movie
+   * @method votes
+   * @return string votes count of votes for this movie
+   * @see IMDB page / (TitlePage)
+   */
+  public function votes() {
+    if ($this->main_votes == -1) $this->rate_vote();
+    return $this->main_votes;
+  }
+
 
   /** Get movie comment
    * @method comment
@@ -502,107 +519,90 @@ $responseBody = $response->getBody();
      return $this->main_comment;
   }
 
-  /** Return votes for this movie
-   * @method votes
-   * @return string votes
-   */
-  function votes () {
-   if ($this->main_votes == "") {
-    if ($this->page["Title"] == "") $this->openpage ("Title");
-    $vote_s = strpos ($this->page["Title"], "User Rating:");
-    if ( $vote_s == 0) return false;
-    if (strpos ($this->page["Title"], "awaiting 5 votes")) return false;
-//    $vote_s = strpos ($this->page["Title"], "<a", $vote_s);
-//    $vote_e = strpos ($this->page["Title"], "votes", $vote_s);
-//    $this->main_votes = substr ($this->page["Title"], $vote_s, $vote_e - $vote_s);
-    preg_match('/href=\"ratings\".*>([0-9,][0-9,]*)/', $this->page["Title"], $matches);
-    $this->main_votes = $matches[1];
-    $this->main_votes = "<a href=\"http://".$this->imdbsite."/title/tt".$this->imdbID."/ratings\">" . $this->main_votes . "</a>";
-   }
-   return $this->main_votes;
-  }
-
-  /** Get movies original language
+/** Get movies original language
    * @method language
    * @return string language
+   * @brief There is not really a main language on the IMDB sites (yet), so this
+   *  simply returns the first one
+   * @see IMDB page / (TitlePage)
    */
-  function language () {
+  public function language() {
    if ($this->main_language == "") {
-    if ($this->page["Title"] == "") $this->openpage ("Title");
-    $lang_s = strpos ($this->page["Title"], "/Sections/Languages/");
-    if ( $lang_s == 0) return FALSE;
-    $lang_s = strpos ($this->page["Title"], ">", $lang_s);
-    $lang_e = strpos ($this->page["Title"], "<", $lang_s);
-    $this->main_language = substr ($this->page["Title"], $lang_s + 1, $lang_e - $lang_s - 1);
+     if (empty($this->langs)) $this->langs = $this->languages();
+     $this->main_language = $this->langs[0];
    }
    return $this->main_language;
   }
 
-  /** Get all langauges this movie is available in
+  /** Get all languages this movie is available in
    * @method languages
    * @return array languages (array[0..n] of strings)
+   * @see IMDB page / (TitlePage)
    */
-  function languages () {
-   if ($this->main_languages == "") {
+  public function languages() {
+   if (empty($this->langs)) {
     if ($this->page["Title"] == "") $this->openpage ("Title");
-    $lang_s = 0;
-    $lang_e = 0;
-    $i = 0;
-    $this->main_languages = array();
-    while (strpos($this->page["Title"], "/Sections/Languages/", $lang_e) > $lang_s) {
-	$lang_s = strpos ($this->page["Title"], "/Sections/Languages/", $lang_s);
-	$lang_s = strpos ($this->page["Title"], ">", $lang_s);
-	$lang_e = strpos ($this->page["Title"], "<", $lang_s);
-	$this->main_languages[$i] = substr ($this->page["Title"], $lang_s + 1, $lang_e - $lang_s - 1);
-	$i++;
+    if (preg_match_all('!href="/language/(.*?)"[^>]*>\s*(.*?)\s*</a>(\s+\((.*?)\)|)!m',$this->page["Title"],$matches)) {
+      $this->langs = $matches[2];
+      $mc = count($matches[2]);
+      for ($i=0;$i<$mc;$i++) {
+        $this->langs_full[] = array('name'=>$matches[2][$i],'code'=>$matches[1][$i],'comment'=>$matches[4][$i]);
+      }
     }
    }
-   return $this->main_languages;
+   return $this->langs;
   }
 
-  /** Get the movies main genre
-   * @method genre
-   * @return string genre
+  /** Get all languages this movie is available in, including details
+   * @method languages_detailed
+   * @return array languages (array[0..n] of array[string name, string code, string comment], code being the ISO-Code)
+   * @see IMDB page / (TitlePage)
    */
-  function genre () {
-   if ($this->main_genre == "") {
-    if ($this->page["Title"] == "") $this->openpage ("Title");
-    $genre_s = strpos ($this->page["Title"], "/Sections/Genres/");
-    if ( $genre_s === FALSE )	return FALSE;
-    $genre_s = strpos ($this->page["Title"], ">", $genre_s);
-    $genre_e = strpos ($this->page["Title"], "<", $genre_s);
-    $this->main_genre = substr ($this->page["Title"], $genre_s + 1, $genre_e - $genre_s - 1);
+  public function languages_detailed() {
+    if (empty($this->langs_full)) $foo = $this->languages();
+    return $this->langs_full;
+  }
+
+
+  /** Get the movies main genre
+   *  Since IMDB.COM does not really now a "Main Genre", this simply means the
+   *  first mentioned genre will be returned.
+   * @method genre
+   * @return string genre first of the genres listed on the movies main page
+   * @brief There is not really a main genre on the IMDB sites (yet), so this
+   *  simply returns the first one
+   * @see IMDB page / (TitlePage)
+   */
+  public function genre() {
+   if (empty($this->main_genre)) {
+    if (empty($this->moviegenres)) $genres = $this->genres();
+    if (!empty($genres)) $this->main_genre = $this->moviegenres[0];
    }
    return $this->main_genre;
   }
 
-  /** Get all genres the movie is registered for
+
+    /** Get all genres the movie is registered for
    * @method genres
    * @return array genres (array[0..n] of strings)
+   * @see IMDB page / (TitlePage)
    */
-  function genres () {
-   if ($this->main_genres == "") {
-    if ($this->page["Title"] == "") $this->openpage ("Title");
-    $this->main_genres = array();
-    $genre_s = strpos($this->page["Title"],"/Sections/Genres/") -5;
-    if ($genre_s === FALSE) return array(); // no genre found
-    if ($genre_s < 0) return array(); // no genre found
-    $genre_e = strpos($this->page["Title"],"/rg/title-tease/",$genre_s);
-    $block = substr($this->page["Title"],$genre_s,$genre_e-$genre_s);
-    $diff = $genre_e-$genre_s;
-    $genre_s = 0;
-    $genre_e = 0;
-    $i = 0;
-    while (strpos($block, "/Sections/Genres/", $genre_e) > $genre_s) {
-	$genre_s = strpos ($block, "/Sections/Genres/", $genre_s);
-	$genre_s = strpos ($block, ">", $genre_s);
-	$genre_e = strpos ($block, "<", $genre_s);
-	$this->main_genres[$i] = substr ($block, $genre_s + 1, $genre_e - $genre_s - 1);
-	$i++;
+  public function genres() {
+    if (empty($this->moviegenres)) {
+      if ($this->page["Title"] == "") $this->openpage ("Title");
+      if (preg_match_all("@<a href\=\"/genre/.+?>(.*?)\</a>@",$this->page["Title"],$matches)) {
+        $this->moviegenres = $matches[1];
+      } elseif (preg_match('!<div class="infobar">(.*?)</div>!ims',$this->page['Title'],$match)) {
+        if (preg_match_all('!href="/genre/.*?"\s*>(.*?)<!ims',$match[1],$matches)) {
+          $this->moviegenres = $matches[1];
+        }
+      }
     }
-   }
-   return $this->main_genres;
+    for ($i=0;$i<count($this->moviegenres);++$i) $this->moviegenres[$i] = trim($this->moviegenres[$i]);
+    $this->moviegenres = array_unique($this->moviegenres);
+    return $this->moviegenres;
   }
+
 
   /** Get colors
    * @method colors
@@ -625,20 +625,19 @@ $responseBody = $response->getBody();
    return $this->main_colors;
   }
 
-  /** Get the main tagline for the movie
+/** Get the main tagline for the movie
    * @method tagline
    * @return string tagline
+   * @see IMDB page / (TitlePage)
    */
-  function tagline () {
-   if ($this->main_tagline == "") {
-    if ($this->page["Title"] == "") $this->openpage ("Title");
-    $tag_s = strpos ($this->page["Title"], "Tagline:");
-    if ( $tag_s == 0) return FALSE;
-    $tag_s = strpos ($this->page["Title"], ">", $tag_s);
-    $tag_e = strpos ($this->page["Title"], "<", $tag_s);
-    $this->main_tagline = substr ($this->page["Title"], $tag_s + 1, $tag_e - $tag_s - 1);
-   }
-   return $this->main_tagline;
+  public function tagline() {
+    if ($this->main_tagline == "") {
+      if ($this->page["Title"] == "") $this->openpage ("Title");
+      if (@preg_match('!Taglines:</h4>\s*(.*?)\s*<!ims',$this->page["Title"],$match)) {
+        $this->main_tagline = trim($match[1]);
+      }
+    }
+    return $this->main_tagline;
   }
 
   /** Get the main Plot outline for the movie
@@ -949,8 +948,8 @@ $responseBody = $response->getBody();
    if ($this->main_photo == "") {
     if ($this->page["Title"] == "") $this->openpage ("Title");
 #    $tag_s = strpos ($this->page["Title"], "<img border=\"0\" alt=\"cover\"");
-    $tag_s = strpos ($this->page["Title"], "<a name=\"poster\"");
-    if ($tag_s == 0) return FALSE;
+     $tag_s = strpos ($this->page["Title"], "<td rowspan=\"2\" id=\"img_primary\">");
+     if ($tag_s == 0) return FALSE;
 #    $tag_s = strpos ($this->page["Title"], "http://ia.imdb.com/media",$tag_s);
     $tag_s = strpos ($this->page["Title"], "http://",$tag_s);
     $tag_e = strpos ($this->page["Title"], '"', $tag_s);
@@ -1001,101 +1000,69 @@ $responseBody = $response->getBody();
    return false;
   }
 
+ 
   /** Get country of production
    * @method country
    * @return array country (array[0..n] of string)
+   * @see IMDB page / (TitlePage)
    */
-  function country () 
-  {
-   if ($this->main_country == "") 
-   {
+  public function country() {
+   if (empty($this->countries)) {
     if ($this->page["Title"] == "") $this->openpage ("Title");
-    $this->main_country = array();
-    $country_s = strpos($this->page["Title"],"/Sections/Countries/") -5;
-    if ($country_s === FALSE) return array(); // no country found
-    if ($country_s < 0) return array(); // no country found
-		//print($country_s);
-		//print($this->page["Title"]);
-    $country_e = strpos($this->page["Title"],"</div>",$country_s);
-    $block = substr($this->page["Title"],$country_s,$country_e-$country_s);
-    $country_s = 0;
-    $country_e = 0;
-    $i = 0;
-    while (strpos ($block, "/Sections/Countries/", $country_e) > $country_s) 
-    {
-			$country_s = strpos ($block, "/Sections/Countries/", $country_s);
-			$country_s = strpos ($block, ">", $country_s);
-			$country_e = strpos ($block, "<", $country_s);
-			$this->main_country[$i] = substr ($block, $country_s + 1, $country_e - $country_s - 1);
-			$i++;
-    }
+    $this->countries = array();
+    if (preg_match_all('!/country/.+?>(.*?)<\/a!m',$this->page["Title"],$matches))
+      for ($i=0;$i<count($matches[0]);++$i) $this->countries[$i] = $matches[1][$i];
    }
-   return $this->main_country;
+   return $this->countries;
   }
 
-  /** Get movies alternative names
+
+
+ /** Get movies alternative names
    * @method alsoknow
-   * @return array aka (array[0..n] of strings)
+   * @return array aka array[0..n] of array[title,year,country,comment]; searching
+   *         on akas.imdb.com will add "lang" (2-char language code) to the array
+   *         for localized names, "country" may hold multiple countries separated
+   *         by commas
+   * @see IMDB page ReleaseInfo
+   * @version Due to changes on the IMDB sites, neither the languages nor the year
+   *          seems to be available anymore - so those array properties will always
+   *          be empty, and kept for compatibility only (for a while, at least).
+   *          Moreover, content has been moved from the title page to ReleaseInfo page.
    */
-  function alsoknow () {
-   if ($this->main_alsoknow == "") {
-    if ($this->page["Title"] == "") $this->openpage ("Title");
-    $ak_s = strpos ($this->page["Title"], "Also Known As:</h5>");
-    if ($ak_s>0) $ak_s += 19;
-    if ($ak_s == 0) $ak_s = strpos ($this->page["Title"], "Alternativ:");
+  public function alsoknow() {
+   if (empty($this->akas)) {
+    if ($this->page["ReleaseInfo"] == "") $this->openpage ("ReleaseInfo");
+    $ak_s = strpos ($this->page["ReleaseInfo"], "<a name=\"akas\">");
+    //if ($ak_s == 0) $ak_s = strpos ($this->page["ReleaseInfo"], "Alternativ:");
     if ($ak_s == 0) return array();
-    $alsoknow_end = strpos ($this->page["Title"], "</div>", $ak_s);
-    $alsoknow_all = strip_tags(substr($this->page["Title"], $ak_s, $alsoknow_end - $ak_s), '<br>');
-    $alsoknow_arr = explode ( "<br>", $alsoknow_all);
-    $j=0;
-    for ( $i=0; $i< count($alsoknow_arr); $i++){
-      if (strpos($alsoknow_arr[$i],"href=")!==FALSE) continue; // link to more AKAs
-      $alsoknow_arr[$i] = trim($alsoknow_arr[$i]);
-      if (strlen($alsoknow_arr[$i])>0) {
-	$tmparr = explode('(', $alsoknow_arr[$i]);
-        unset($ak_temp);
-	$ak_temp["title"]= $tmparr[0];
-        $elems = count($tmparr);
-        for ($k=1;$k<$elems;++$k) {
-          if (strpos($tmparr[$k],')'))
-            $var = substr($tmparr[$k],0,strrpos($tmparr[$k],')'));
-          else $var = $tmparr[$k];
-          if (!isset($ak_temp["year"])) {
-            if (is_numeric($var)) {
-              $ak_temp["year"] = $var;
-              continue;
-            } else {
-              $ak_temp["year"] = "";
-            }
-            if ( ($country_e = strpos($var, ":")) != 0){
-              $ak_temp["country"]= substr( $var, 0, $country_e);
-              $ak_temp["comment"]= substr( $var, $country_e+2, strlen($var) - $country_e -2);
+    $alsoknow_end = strpos ($this->page["ReleaseInfo"], "</table>", $ak_s);
+    $alsoknow_all = substr($this->page["ReleaseInfo"], $ak_s, $alsoknow_end - $ak_s);
+    preg_match_all("@<td>(.*?)</td>@i", $alsoknow_all, $matches);
+    for($i=0;$i<count($matches[1]);$i+=2){
+        $title = trim($matches[1][$i]);
+        $countries = explode('/',$matches[1][$i+1]);
+        foreach($countries as $country){
+            $firstbracket = strpos($country, '(');
+            if($firstbracket === false){
+                $_country = trim($country);
+                $comment = '';
             }else{
-              $ak_temp["country"]= $var;
+                $_country = trim(substr($country, 0, $firstbracket));
+                preg_match_all("@\((.+?)\)@", $country, $matches3);
+                $comment = implode(', ', $matches3[1]);
             }
-          } elseif (!isset($ak_temp["country"])) {
-            if ( ($country_e = strpos($var, ":")) != 0){
-              $ak_temp["country"]= substr( $var, 0, $country_e);
-              $ak_temp["comment"]= substr( $var, $country_e+2, strlen($var) - $country_e -2);
-            }else{
-              $ak_temp["country"]= $var;
-            }
-          } else {
-            if (strpos($var,')'))
-              $var = substr($var,0,strrpos($var,')'));
-            if (isset($ak_temp["comment"]) && !empty($ak_temp["comment"])) $ak_temp["comment"] .= " $var";
-            else $ak_temp["comment"] = $var;
-          }
+            $this->akas[] = array(
+                "title"=>$title,
+                "year"=>'',
+                "country"=>$_country,
+                "comment"=>$comment,
+                "lang"=>''
+            );
         }
-        if (!isset($ak_temp["year"])) $ak_temp["year"] = "";
-        if (!isset($ak_temp["country"])) $ak_temp["country"] = "";
-        if (!isset($ak_temp["comment"])) $ak_temp["comment"] = "";
-        $this->main_alsoknow[$j] = $ak_temp;
-	$j++;
-      }
     }
    }
-   return $this->main_alsoknow;
+   return $this->akas;
   }
 
   /** Get sound formats
